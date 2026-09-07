@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+from common import *
+from fetch import scaffold
+from runner import compile_cpp, tests, execute, show, diff_bytes
+from stress import stress
+from editor import edit, browser
+from archiving import archive, restore
+
+def positive(s):
+    n = float(s)
+    if not math.isfinite(n) or n <= 0:
+        raise argparse.ArgumentTypeError('must be finite and positive')
+    return n
+
+def arguments():
+    p = argparse.ArgumentParser(prog='cf')
+    p.add_argument('--cwd', type=Path)
+    p.add_argument('--version', action='version', version='cf-contest modular 1.0')
+    sub = p.add_subparsers(dest='command', required=True)
+    for cmd in ('parse', 'init'):
+        q = sub.add_parser(cmd)
+        q.add_argument('id')
+        q.add_argument('--gym', action='store_true')
+        q.add_argument('--refresh-samples', action='store_true')
+        q.add_argument('--html')
+        if cmd == 'init':
+            q.add_argument('indices', nargs='+')
+    q = sub.add_parser('restore')
+    q.add_argument('file', type=Path)
+    for cmd in ('path', 'edit', 'list', 'test', 'run', 'build', 'stress', 'submit', 'diff', 'open', 'archive', 'addtest'):
+        q = sub.add_parser(cmd)
+        q.add_argument('--contest')
+        q.add_argument('--gym', action='store_true')
+        if cmd == 'stress':
+            q.add_argument('count', nargs='?', type=int, default=1000)
+            q.add_argument('-p', '--problem')
+        elif cmd == 'addtest':
+            q.add_argument('name')
+            q.add_argument('-p', '--problem')
+        else:
+            q.add_argument('problem', nargs='?')
+            if cmd == 'archive':
+                q.add_argument('contest_id', nargs='?')
+        if cmd == 'path':
+            q.add_argument('--file', action='store_true')
+        if cmd == 'list':
+            q.add_argument('--indices', action='store_true')
+        if cmd in ('test', 'run', 'build', 'stress'):
+            q.add_argument('--debug', action='store_true')
+        if cmd in ('test', 'run', 'stress'):
+            q.add_argument('--timeout', type=positive, default=3)
+        if cmd in ('test', 'stress'):
+            mode = q.add_mutually_exclusive_group()
+            mode.add_argument('--exact', action='store_true')
+            mode.add_argument('--checker')
+        if cmd in ('run', 'addtest'):
+            q.add_argument('--input', type=Path, required=cmd == 'addtest')
+        if cmd == 'addtest':
+            q.add_argument('--output', type=Path, required=True)
+        if cmd == 'stress':
+            q.add_argument('--seed', type=int, default=1)
+            q.add_argument('--brute-timeout', type=positive, default=10)
+        if cmd == 'submit':
+            q.add_argument('--no-copy', action='store_true')
+            q.add_argument('--no-open', action='store_true')
+    return p.parse_args()
+
+def main():
+    if len(sys.argv) == 3 and sys.argv[1] == '_args':
+        print(json.dumps(shlex.split(sys.argv[2])))
+        return 0
+    a = arguments()
+    if a.cwd:
+        os.chdir(a.cwd.expanduser())
+    if a.command in ('parse', 'init'):
+        scaffold(a)
+        return 0
+    if a.command == 'restore':
+        restore(a.file.expanduser().resolve())
+        return 0
+    if a.command == 'archive':
+        if a.contest_id:
+            if not a.problem:
+                fail('Use archive CONTEST or archive PROBLEM CONTEST.')
+            a.contest = ident(a.contest_id)
+        else:
+            a.contest = ident(a.problem) if a.problem else a.contest
+            a.problem = None
+    folder, m = context(a)
+    if a.command == 'list':
+        for name in m['indices']:
+            print(name.lower() if a.indices else f"{name:4} {m['names'][name]}")
+        return 0
+    if a.command == 'path' and (not a.file) and (not a.problem) and (a.contest or Path.cwd() == folder):
+        print(folder)
+        return 0
+    if a.command == 'archive':
+        with locked(key(m['id'], m['kind'] == 'gym')):
+            archive(folder, m, a.problem)
+        return 0
+    p, src, name = problem(folder, m, a.problem, first=a.command in ('edit', 'path'))
+    if a.command == 'path':
+        print(src if a.file else p)
+        return 0
+    if a.command == 'edit':
+        edit(src)
+        return 0
+    url = f"https://codeforces.com/{m['kind']}/{m['id']}"
+    if a.command == 'open':
+        browser(url + '/problem/' + name)
+        return 0
+    with locked(key(m['id'], m['kind'] == 'gym')):
+        if a.command == 'test':
+            return tests(a, p, src)
+        if a.command == 'stress':
+            return stress(a, p, src)
+        if a.command == 'build':
+            print(compile_cpp(src, p, a.debug))
+        if a.command == 'run':
+            binary = compile_cpp(src, p, a.debug)
+            if not a.input:
+                return int(subprocess.run([binary], cwd=p).returncode != 0)
+            out = p / '.cf/run/manual.out'
+            err = p / '.cf/run/manual.err'
+            code, elapsed = execute([binary], p, a.input.expanduser().resolve(), out, err, a.timeout)
+            sys.stdout.buffer.write(out.read_bytes())
+            sys.stdout.flush()
+            show(err)
+            print(f"\n{('TLE' if code is None else 'OK' if code == 0 else 'RE')}: {elapsed * 1000:.0f} ms", file=sys.stderr)
+            return int(code != 0)
+        if a.command == 'addtest':
+            if not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}', a.name):
+                fail('Use an alphanumeric test name.')
+            pair = [p / 'tests/custom' / (a.name + ext) for ext in ('.in', '.out')]
+            if any((f.exists() or f.is_symlink() for f in pair)):
+                fail('Test already exists; not overwritten.')
+            data = [a.input.expanduser().read_bytes(), a.output.expanduser().read_bytes()]
+            for f, content in zip(pair, data):
+                atomic(f, content)
+            print('Added: ' + a.name)
+        if a.command in ('submit', 'diff'):
+            snapshots = sorted((p / 'submissions').glob('*.cpp'))
+            data = src.read_bytes()
+            if a.command == 'diff':
+                if not snapshots:
+                    fail('No prepared snapshot; cf submit creates one.')
+                old = snapshots[-1].read_bytes()
+                diff_bytes(old, data)
+                return int(old != data)
+            compile_cpp(src, p)
+            if src.read_bytes() != data:
+                fail('Source changed during compilation; retry.')
+            snapshot = p / 'submissions' / (stamp() + '.cpp')
+            atomic(snapshot, data)
+            print('Prepared snapshot: ' + str(snapshot))
+            if re.search(b'^\\s*#\\s*include\\s*"', data, re.M):
+                print('Warning: local includes are NOT inlined.', file=sys.stderr)
+            if not a.no_copy:
+                subprocess.run(['wl-copy'], input=data, check=True, timeout=5)
+            if not a.no_open:
+                browser(url + '/submit?problemIndex=' + name)
+            print('No submission was sent. Paste and submit in your browser.')
+    return 0
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print('Interrupted.', file=sys.stderr)
+        sys.exit(130)
+    except (
+        RuntimeError, OSError, ValueError, KeyError,
+        subprocess.SubprocessError,
+    ) as e:
+        print('cf: ' + str(e), file=sys.stderr)
+        sys.exit(2)
