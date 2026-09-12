@@ -1,3 +1,5 @@
+// https://codeforces.com/contest/2263/problem/A
+#include <algorithm>
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -56,7 +58,19 @@ ll modpow(ll a, ll n, ll m = MOD) {
 }
 
 void solve() {
-  // j
+  int n;
+  cin >> n;
+  vi bin(n);
+  rep(i, 0, n) cin >> bin[i];
+
+  int c0 = (int)count(all(bin), 0);
+  int c1 = (int)count(all(bin), 1);
+
+  if (c0 > c1) {
+    cout << "Elsie" << nl;
+  } else {
+    cout << "Bessie" << nl;
+  }
 }
 
 int main() {
@@ -64,7 +78,7 @@ int main() {
   cin.tie(nullptr);
 
   int t = 1;
-  // cin >> t;
+  cin >> t;
   while (t--)
     solve();
 

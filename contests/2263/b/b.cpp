@@ -1,4 +1,6 @@
+// https://codeforces.com/contest/2263/problem/B
 #include <bits/stdc++.h>
+#include <vector>
 using namespace std;
 
 #define nl "\n"
@@ -56,7 +58,25 @@ ll modpow(ll a, ll n, ll m = MOD) {
 }
 
 void solve() {
-  // j
+  int n, k;
+  cin >> n >> k;
+
+  if (n > k || k > 2 * n - 1) {
+    cout << -1 << nl;
+    return;
+  }
+
+  int m = 2 * n - k;
+  vector<vector<int>> a(n, vector<int>(n, 0));
+
+  rep(i, 0, m) a[i][i] = i + 1;
+  rep(r, m, n) a[r][0] = r + 1;
+  rep(c, m, n) a[0][c] = (n - m) + (c + 1);
+
+  int nxt = k + 1;
+  rep(i, 0, n) rep(j, 0, n) if (a[i][j] == 0) a[i][j] = nxt++;
+
+  rep(i, 0, n) { rep(j, 0, n) cout << a[i][j] << ((j + 1 < n) ? " " : nl); }
 }
 
 int main() {
@@ -64,7 +84,7 @@ int main() {
   cin.tie(nullptr);
 
   int t = 1;
-  // cin >> t;
+  cin >> t;
   while (t--)
     solve();
 

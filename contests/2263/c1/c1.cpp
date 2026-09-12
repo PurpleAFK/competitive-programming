@@ -1,3 +1,4 @@
+// https://codeforces.com/contest/2263/problem/C1
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -56,7 +57,10 @@ ll modpow(ll a, ll n, ll m = MOD) {
 }
 
 void solve() {
-  // j
+  int n;
+  cin >> n;
+  vi v(n);
+  rep(i, 0, n) cin >> v[i];
 }
 
 int main() {
@@ -64,7 +68,7 @@ int main() {
   cin.tie(nullptr);
 
   int t = 1;
-  // cin >> t;
+  cin >> t;
   while (t--)
     solve();
 

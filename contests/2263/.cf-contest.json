@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "id": "2263",
+  "kind": "contest",
+  "indices": [
+    "A",
+    "B",
+    "C1",
+    "C2",
+    "D",
+    "E",
+    "F"
+  ],
+  "names": {
+    "A": "Min Max Game",
+    "B": "Min Matrices",
+    "C1": "Floor of MEX (Easy Version)",
+    "C2": "Floor of MEX (Hard Version)",
+    "D": "Culling Game",
+    "E": "Traveling the World",
+    "F": "PLUSworld"
+  }
+}
